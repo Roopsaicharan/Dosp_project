@@ -1,6 +1,7 @@
 import gleam/int
 import gleam/io
 import gleam/list
+import gleam/string
 import working_actors
 
 // Simple timing using Erlang's system_time
@@ -50,44 +51,62 @@ fn perfect_square_root(n: Int) -> Int {
   }
 }
 
-// Worker function: given #(k, max_len), return list of #(k, len, root) solutions
+// Worker function: only checks for EXACT length
 pub fn check_k(args: #(Int, Int)) -> List(#(Int, Int, Int)) {
-  let #(k, max_len) = args
+  let #(k, fixed_len) = args
+  let sum = sum_of_squares(k, fixed_len)
+  let root = perfect_square_root(sum)
 
-  list.fold(list.range(2, max_len), [], fn(acc, len) {
-    let sum = sum_of_squares(k, len)
-    let root = perfect_square_root(sum)
-    case root > 0 {
-      True -> [#(k, len, root), ..acc]
-      False -> acc
-    }
-  })
+  case root > 0 {
+    True -> [#(k, fixed_len, root)]
+    False -> []
+  }
+}
+
+// Print a sequence like "2^2 + 3^2 = 13 = root^2"
+fn print_sequence(k: Int, len: Int, root: Int) -> Nil {
+  let seq = list.range(k, k + len - 1)
+  let parts = list.map(seq, fn(x) { int.to_string(x) <> "^2" })
+  let squares_str = string.join(parts, " + ")
+
+  let sum_val = sum_of_squares(k, len)
+  io.println(
+    squares_str
+    <> " = "
+    <> int.to_string(sum_val)
+    <> " = "
+    <> int.to_string(root)
+    <> "^2",
+  )
 }
 
 pub fn main() -> Nil {
   let n = 1_000_000
-  let max_len = 4
-  let workers = 5
+  // input N
+  let fixed_len = 4
+  // input k (exact length)
+  let workers = 100
+  // number of parallel workers
 
   // Measure the entire computation
   let #(_elapsed_time, results) =
     measure_time(fn() {
-      // One task per k
-      let tasks = list.map(list.range(1, n), fn(k) { #(k, max_len) })
-
-      // Spawn workers
+      let tasks = list.map(list.range(1, n), fn(k) { #(k, fixed_len) })
       let worker_results: List(List(#(Int, Int, Int))) =
         working_actors.spawn_workers(workers, tasks, check_k)
 
-      // Flatten results and sort by starting k
       let all_solutions = list.flatten(worker_results)
       list.sort(all_solutions, fn(a, b) { int.compare(a.0, b.0) })
     })
 
-  io.println("**** ANSWERS ****")
-  // Print ALL first integers (k values) from the solutions
-  list.each(results, fn(solution) {
-    let #(k, _len, _root) = solution
-    io.println(int.to_string(k))
-  })
+  io.println("****ANSWER****")
+
+  // Print result or "No solutions found"
+  case list.first(results) {
+    Ok(#(k, len, root)) -> {
+      io.println("Smallest starting k: " <> int.to_string(k))
+      print_sequence(k, len, root)
+    }
+    Error(_) -> io.println("No solutions found")
+  }
 }
